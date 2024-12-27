@@ -1,8 +1,8 @@
-set(HEADER_DIR "../include/vfs")
+set(HEADER_DIR "../include/")
 include_directories(${HEADER_DIR})
 
 add_library(
-  ${PROJECT_NAME}
+  ${PROJECT_NAME} STATIC
   "FileSystem.cpp"
   "RegularFile.cpp"
 )
