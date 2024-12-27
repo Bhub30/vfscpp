@@ -2,8 +2,8 @@
 #include <ctime>
 #include <filesystem>
 #include <ios>
-#include "RegularFile.h"
-#include "IFile.h"
+#include "vfs/RegularFile.h"
+#include "vfs/IFile.h"
 
 namespace VFS {
 

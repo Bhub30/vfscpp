@@ -1,10 +1,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include "IFS.h"
-#include "IFile.h"
-#include "RegularFile.h"
-#include "FileSystem.h"
+#include "vfs/RegularFile.h"
+#include "vfs/FileSystem.h"
 
 namespace VFS {
 
@@ -27,22 +25,19 @@ FileSystem::~FileSystem() { unmount(); }
 bool FileSystem::mount(std::string const & path)
 {
     if ( _mounted )
-        return true;
-
-    if ( !fs::exists(path) )
-    {
-        _path = "";
         return false;
-    }
-    if ( !fs::is_directory(fs::status(path)))
+
+    if ( !fs::exists(path) || !fs::is_directory(path) )
     {
         _path = "";
         return false;
     }
 
+    _path = path;
+    _mounted = true;
     fs::current_path(_path);
 
-    return true;
+    return _mounted;
 }
 
 bool FileSystem::unmount()
@@ -58,7 +53,7 @@ bool FileSystem::unmount()
 
 IFS::IFilePtr FileSystem::open(std::string const & filename, Perms mode)
 {
-    if ( !_mounted || !validFilename(filename) || !hasPermision(mode) )
+    if ( !_mounted || !fs::exists(filename) || !validFilename(filename) || !hasPermision(mode) )
         return nullptr;
 
     return !fs::is_directory(filename) ? IFilePtr( new RegularFile(_path + filename) ) : nullptr;
@@ -69,7 +64,7 @@ bool FileSystem::remove(std::string const & filename)
     if ( !_mounted )
         return false;
 
-    if ( !validFilename(filename) || fs::exists(filename) )
+    if ( !validFilename(filename) || !fs::exists(filename) )
         return false;
 
     return fs::remove(filename);
@@ -79,7 +74,7 @@ bool FileSystem::touchFile(std::string const & filename)
 {
     if ( !_mounted || !validFilename(filename) )
         return false;
-    if ( !fs::exists(filename) )
+    if ( fs::exists(filename) )
         return false;
 
     std::ofstream{filename};
@@ -102,7 +97,7 @@ bool FileSystem::moveTo(std::string const & from, std::string const & to)
 {
     if ( !_mounted || !validFilename(from) || !validFilename(to) )
         return false;
-    if ( !fs::exists(from) || !fs::exists(to))
+    if ( !fs::exists(from) || fs::exists(to))
         return false;
 
     fs::rename(from, to);
@@ -111,18 +106,18 @@ bool FileSystem::moveTo(std::string const & from, std::string const & to)
 
 }
 
-bool FileSystem::moveTo(std::string const from, IFSPtr & fs, std::string const & to)
+bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string const & to)
 {
-    if ( !_mounted || fs == nullptr )
+    if ( !_mounted || fsptr == nullptr || !fsptr->isMounted() )
         return false;
 
     if ( !validFilename(from) || !validFilename(to) )
         return false;
 
-    if ( !fs::exists(from) || !fs::exists(to))
+    if ( !fs::exists(_path + from) || fs::exists(fsptr->path() + to))
         return false;
 
-    fs::rename(from, to);
+    fs::rename(_path + from, fsptr->path() + to);
 
     return true;
 
@@ -157,21 +152,21 @@ IFS::EntryList FileSystem::list(std::string const & dir)
 
 bool FileSystem::contain(std::string const & filename)
 {
-    return search(filename) == type::NOTFOUND;
+    return search(filename) != type::NOTFOUND;
 }
 
 std::string FileSystem::search(std::string const & filename)
 {
-    if ( !_mounted || validFilename(filename) )
+    if ( !_mounted || !validFilename(filename) )
         return type::NOTFOUND;
 
     auto entry = list();
-    auto result = std::find_if(entry.begin(), entry.end(), [&] (std::string const & item) -> bool
+    auto it = std::find_if(entry.begin(), entry.end(), [&filename] (std::string const & item) -> bool
     {
         return item.find(filename) != std::string::npos;
     });
 
-    return result != entry.end() ? *result : type::NOTFOUND;
+    return it != entry.end() ? *it : type::NOTFOUND;
 }
 
 bool FileSystem::copy(std::string const & from, std::string const & to)
@@ -182,7 +177,7 @@ bool FileSystem::copy(std::string const & from, std::string const & to)
     if ( !validFilename(from) || !validFilename(to) )
         return false;
 
-    if ( !fs::exists(from) || !fs::exists(to))
+    if ( !fs::exists(from) || fs::exists(to))
         return false;
 
     return fs::copy_file(from, to);
@@ -233,12 +228,12 @@ bool FileSystem::validFilename(std::string const & filename)
 {
     auto it = filename.begin();
     std::uint8_t prefix_with_double_dot = 0;
-    static auto fn = [&prefix_with_double_dot] (char ch)
+    auto fn = [&prefix_with_double_dot] (char ch)
     {
         if ( ch == '.' ) ++prefix_with_double_dot;
     };
-    std::for_each(it, it + 1, fn);
-    if ( !fs::exists(filename) || *filename.begin() == '/' || prefix_with_double_dot == 2  )
+    std::for_each(it, it + 2, fn);
+    if ( *filename.begin() == '/' || prefix_with_double_dot == 2  )
         return false;
 
     return true;
@@ -246,12 +241,15 @@ bool FileSystem::validFilename(std::string const & filename)
 
 bool FileSystem::hasPermision(Perms perm)
 {
+    if ( perm == Perms::RW )
+        return true;
+
     using std::filesystem::perms;
 
     auto const & allPerms = fs::status(_path).permissions();
     perms per = ( perm == Perms::READ ? perms::owner_read : perms::owner_write );
 
-    return perms::none == ( perms::others_read & per ) ? false : true;
+    return perms::none != ( perms::owner_read & per ) && perms::none != ( perms::owner_write & per );
 }
 
 }

@@ -33,7 +33,7 @@ public:
 
     bool moveTo(std::string const & from, std::string const & to) override;
 
-    bool moveTo(std::string const from, IFSPtr & fs, std::string const & to) override;
+    bool moveTo(std::string const & from, IFSPtr fsptr, std::string const & to) override;
 
     EntryList list() override;
 
