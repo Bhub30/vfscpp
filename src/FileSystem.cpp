@@ -106,6 +106,7 @@ bool FileSystem::moveTo(std::string const & from, std::string const & to)
 
 }
 
+// BUG: Construct a new FileSystem object will change work path to that path, so that all function for this object will be not working as before constructing the new object
 bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string const & to)
 {
     if ( !_mounted || fsptr == nullptr || !fsptr->isMounted() )
@@ -114,10 +115,10 @@ bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string cons
     if ( !validFilename(from) || !validFilename(to) )
         return false;
 
-    if ( !fs::exists(_path + from) || fs::exists(fsptr->path() + to))
+    if ( !fs::exists(from) || fs::exists(fsptr->path() + to))
         return false;
 
-    fs::rename(_path + from, fsptr->path() + to);
+    fs::rename(from, fsptr->path() + to);
 
     return true;
 
@@ -222,6 +223,11 @@ type::FILETYPE FileSystem::type(std::string const & filename)
             return type::IMPLDEFINE;
             break;
     }
+}
+
+void FileSystem::toCurrentPath()
+{
+    fs::current_path(_path);
 }
 
 bool FileSystem::validFilename(std::string const & filename)

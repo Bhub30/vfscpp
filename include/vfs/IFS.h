@@ -106,7 +106,9 @@ public:
     virtual bool moveTo(std::string const & from, std::string const & to) = 0;
 
     /**
-     * @brief Move the file to the specified mounted filesystem.
+     * @brief Move the file to the specified mounted filesystem. It is need to know that construct a new FileSystem
+     * object will change work path to that path, so that all function for this object will be not working as before
+     * constructing the new object. By now, it isn't recommend to use this function util fix the bug.
      *
      * @param from - relative path to this filesystem
      * @param fs - other already mounted filesystem
@@ -162,6 +164,11 @@ public:
     virtual bool copy(std::string const & from, std::string const & to) = 0;
 
     virtual type::FILETYPE type(std::string const & filename) = 0;
+
+    /**
+     * @brief Change the work path to the filesystem path that was mounted.
+     */
+    virtual void toCurrentPath() = 0;
 };
 
 } // namespace VFS
