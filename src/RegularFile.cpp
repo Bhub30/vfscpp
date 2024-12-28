@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <ios>
 #include "vfs/RegularFile.h"
+#include "vfs/IFS.h"
 #include "vfs/IFile.h"
 
 namespace VFS {
@@ -11,13 +12,12 @@ namespace fs = std::filesystem;
 
 RegularFile::RegularFile(std::string const & filename)
     : _filename(filename)
-      , _stream(_filename, std::ios::out | std::ios::binary)
+      , _outStream(_filename, std::ios::out | std::ios::binary)
       , _inStream(_filename, std::ios::in | std::ios::binary)
       , _access(false)
-      , _size(0)
       , _perms()
 {
-    if ( fs::exists(_filename) && ( _stream.is_open() && _inStream.is_open() ) )
+    if ( fs::exists(_filename) && ( _outStream.is_open() && _inStream.is_open() ) )
     {
         _access = true;
         _perms = fs::status(_filename).permissions();
@@ -35,18 +35,14 @@ std::size_t RegularFile::write(IFile::Buffer const & buf, std::size_t size)
     if ( !_access || ( _perms & fs::perms::owner_write ) == fs::perms::none )
         return -1;
 
-    auto beginPos = _stream.tellp();
-    _stream.write(buf.data(), size);
-    if ( _stream.fail() )
+    auto beginPos = _outStream.tellp();
+    _outStream.write(buf.data(), size);
+    if ( _outStream.fail() )
         return -1;
-    auto endPos = _stream.tellp();
+    auto endPos = _outStream.tellp();
 
-    size = endPos - beginPos;
-
-    if ( size )
-        _size += size;
-
-    return size;
+    auto wrote = endPos - beginPos;
+    return wrote;
 }
 
 std::size_t RegularFile::write(Buffer const & buf, std::size_t offset, std::size_t size)
@@ -54,10 +50,9 @@ std::size_t RegularFile::write(Buffer const & buf, std::size_t offset, std::size
     if ( !_access || ( _perms & fs::perms::owner_write ) == fs::perms::none )
         return -1;
 
-    _stream.seekp(offset, std::ios::beg);
-
+    _outStream.seekp(offset, std::ios::beg);
     auto wroteSize = write(buf, size);
-    _stream.seekp(0, std::ios::end);
+    _outStream.seekp(0, std::ios::end);
 
     return wroteSize;
 }
@@ -85,13 +80,11 @@ RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
     if ( !_access || ( _perms & fs::perms::owner_read ) == fs::perms::none )
         return {};
 
-    auto totalSize = this->size();
+    auto totalSize= fs::file_size(_filename);
     _inStream.seekg(offset, std::ios::beg);
     auto validSize = ( size < totalSize ? size : totalSize );
-    Buffer buf{};
-    buf.reserve(validSize);
-    _inStream.read( buf.data(), validSize );
-    _inStream.seekg(0, std::ios::end);
+    Buffer buf(validSize, '.');
+    _inStream.read(buf.data(), validSize);
 
     if ( _inStream.fail() )
         return {};
@@ -104,8 +97,8 @@ void RegularFile::close()
     if ( !_access )
         return;
 
-    _stream.flush();
-    _stream.close();
+    _outStream.flush();
+    _outStream.close();
     _inStream.close();
 
     _access = false;
@@ -119,15 +112,12 @@ FileInfo RegularFile::info() const
     auto sctp = time_point_cast<system_clock::duration>(fileTime - fs::file_time_type::clock::now() + system_clock::now());
     auto cftime = system_clock::to_time_t(sctp);
 
-    return { "RegualFile", permision(), _size, std::ctime(&cftime), _filename };
+    return { type::REGULAR, permision(), size(), std::ctime(&cftime), _filename };
 }
 
-std::size_t RegularFile::size()
+std::size_t RegularFile::size() const
 {
-    if ( _size == 0 )
-        _size = static_cast<std::size_t>( fs::file_size(_filename) );
-
-    return _size;
+    return fs::file_size(_filename);
 }
 
 std::string RegularFile::filename() const
@@ -156,22 +146,27 @@ FileInfo::PermisionsT RegularFile::permision() const
 void RegularFile::setPermision(Perms perms)
 {
     if ( perms == Perms::READ )
-        fs::permissions( _filename, _perms | fs::perms::owner_read );
+        _perms |= fs::perms::owner_read | fs::perms::others_read | fs::perms::group_read;
     else if ( perms == Perms::WRITE )
-        fs::permissions( _filename, _perms | fs::perms::owner_write );
+        _perms |= fs::perms::owner_write;
     else
-        fs::permissions( _filename, _perms | fs::perms::owner_read | fs::perms::owner_write );
+        _perms |= fs::perms::owner_write | fs::perms::owner_read | fs::perms::others_read | fs::perms::group_read;
+
+    fs::permissions( _filename, _perms );
+    _access = true;
 }
 
 void RegularFile::disableWrite()
 {
     // currentPermissions & ~fs::perms::owner_write & ~fs::perms::group_write & ~fs::perms::others_write
-    fs::permissions( _filename, _perms & ~fs::perms::owner_write );
+    _perms = ( _perms & ~fs::perms::owner_write );
+    fs::permissions( _filename, _perms );
 }
 
 void RegularFile::disableRead()
 {
-    fs::permissions( _filename, _perms & ~fs::perms::owner_read );
+    _perms = ( _perms & ~fs::perms::owner_read );
+    fs::permissions( _filename, _perms );
 }
 
 }

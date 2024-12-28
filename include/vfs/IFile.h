@@ -79,7 +79,7 @@ public:
      */
     virtual FileInfo info() const = 0;
 
-    virtual std::size_t size() = 0;
+    virtual std::size_t size() const = 0;
 
     /**
      * @brief The filename is meeting POXIS standards.
@@ -100,6 +100,8 @@ public:
     virtual void disableWrite() = 0;
 
     virtual void disableRead() = 0;
+
+    virtual void disableAll() = 0;
 };
 
 } // namespace VFS

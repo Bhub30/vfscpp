@@ -32,7 +32,7 @@ public:
 
     FileInfo info() const override;
 
-    std::size_t size() override;
+    std::size_t size() const override;
 
     std::string filename() const override;
 
@@ -44,12 +44,13 @@ public:
 
     void disableRead() override;
 
+    void disableAll() override { _access = false; };
+
 private:
     std::string _filename;  // absolute path
-    std::ofstream _stream;
+    std::ofstream _outStream;
     std::ifstream _inStream;
     bool _access;
-    std::size_t _size;
     fs::perms _perms;
 };
 
