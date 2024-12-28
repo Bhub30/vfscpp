@@ -1,6 +1,4 @@
 #include <algorithm>
-#include <filesystem>
-#include <fstream>
 #include "vfs/RegularFile.h"
 #include "vfs/FileSystem.h"
 
@@ -35,7 +33,7 @@ bool FileSystem::mount(std::string const & path)
 
     _path = path;
     _mounted = true;
-    fs::current_path(_path);
+    // fs::current_path(_path);
 
     return _mounted;
 }
@@ -56,7 +54,8 @@ IFS::IFilePtr FileSystem::open(std::string const & filename, Perms mode)
     if ( !_mounted || !fs::exists(filename) || !validFilename(filename) || !hasPermision(mode) )
         return nullptr;
 
-    return !fs::is_directory(filename) ? IFilePtr( new RegularFile(_path + filename) ) : nullptr;
+    auto absolute = _path + filename;
+    return !fs::is_directory(absolute) ? IFilePtr( new RegularFile(absolute) ) : nullptr;
 }
 
 bool FileSystem::remove(std::string const & filename)
@@ -64,20 +63,22 @@ bool FileSystem::remove(std::string const & filename)
     if ( !_mounted )
         return false;
 
-    if ( !validFilename(filename) || !fs::exists(filename) )
+    auto absolute = _path + filename;
+    if ( !validFilename(filename) || !fs::exists(absolute) )
         return false;
 
-    return fs::remove(filename);
+    return fs::remove(absolute);
 }
 
 bool FileSystem::touchFile(std::string const & filename)
 {
     if ( !_mounted || !validFilename(filename) )
         return false;
-    if ( fs::exists(filename) )
+    auto absolute = _path + filename;
+    if ( fs::exists(absolute) )
         return false;
 
-    std::ofstream{filename};
+    std::ofstream{absolute};
 
     return true;
 }
@@ -87,26 +88,28 @@ bool FileSystem::makeDir(std::string const & filename)
     if ( !_mounted )
         return false;
 
-    if ( !validFilename(filename) || fs::exists(filename) )
+    auto absolute = _path + filename;
+    if ( !validFilename(filename) || fs::exists(absolute) )
         return false;
 
-    return fs::create_directory(filename);
+    return fs::create_directory(absolute);
 }
 
 bool FileSystem::moveTo(std::string const & from, std::string const & to)
 {
     if ( !_mounted || !validFilename(from) || !validFilename(to) )
         return false;
-    if ( !fs::exists(from) || fs::exists(to))
+    auto fromAbsolute = _path + from;
+    auto toAbsolute = _path + to;
+    if ( !fs::exists(fromAbsolute) || fs::exists(toAbsolute))
         return false;
 
-    fs::rename(from, to);
+    fs::rename(fromAbsolute, toAbsolute);
 
     return true;
 
 }
 
-// BUG: Construct a new FileSystem object will change work path to that path, so that all function for this object will be not working as before constructing the new object
 bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string const & to)
 {
     if ( !_mounted || fsptr == nullptr || !fsptr->isMounted() )
@@ -115,10 +118,12 @@ bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string cons
     if ( !validFilename(from) || !validFilename(to) )
         return false;
 
-    if ( !fs::exists(from) || fs::exists(fsptr->path() + to))
+    auto fromAbsolute = _path + from;
+    auto toAbsolute = fsptr->path() + to;
+    if ( !fs::exists(fromAbsolute) || fs::exists(toAbsolute))
         return false;
 
-    fs::rename(from, fsptr->path() + to);
+    fs::rename(fromAbsolute, toAbsolute);
 
     return true;
 
@@ -137,16 +142,15 @@ IFS::EntryList FileSystem::list(std::string const & dir)
     if ( !_mounted || !validFilename(dir))
         return {};
 
-    if ( !fs::exists(dir) )
+    auto absolute = _path + dir;
+    if ( !fs::exists(absolute) )
         return {};
 
-    auto iters = fs::recursive_directory_iterator(dir);
+    auto iters = fs::recursive_directory_iterator(absolute);
     EntryList result;
     result.reserve(10);
     for (auto const& dir_entry : iters)
-    {
-        result.push_back(std::move(dir_entry.path().string()));
-    }
+        result.emplace_back(std::move(dir_entry.path().string()));
 
     return result;
 }
@@ -178,10 +182,12 @@ bool FileSystem::copy(std::string const & from, std::string const & to)
     if ( !validFilename(from) || !validFilename(to) )
         return false;
 
-    if ( !fs::exists(from) || fs::exists(to))
+    auto fromAbsolute = _path + from;
+    auto toAbsolute = _path + to;
+    if ( !fs::exists(fromAbsolute) || fs::exists(toAbsolute))
         return false;
 
-    return fs::copy_file(from, to);
+    return fs::copy_file(fromAbsolute, toAbsolute);
 }
 
 type::FILETYPE FileSystem::type(std::string const & filename)
@@ -189,7 +195,7 @@ type::FILETYPE FileSystem::type(std::string const & filename)
     if ( !_mounted || !validFilename(filename) )
         return type::NOTFOUND;
 
-    fs::file_status fs{fs::status(filename)};
+    fs::file_status fs{fs::status(_path + filename)};
     switch (fs.type())
     {
         case fs::file_type::fifo:
@@ -223,11 +229,6 @@ type::FILETYPE FileSystem::type(std::string const & filename)
             return type::IMPLDEFINE;
             break;
     }
-}
-
-void FileSystem::toCurrentPath()
-{
-    fs::current_path(_path);
 }
 
 bool FileSystem::validFilename(std::string const & filename)

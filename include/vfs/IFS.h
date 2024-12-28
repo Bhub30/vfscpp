@@ -164,11 +164,6 @@ public:
     virtual bool copy(std::string const & from, std::string const & to) = 0;
 
     virtual type::FILETYPE type(std::string const & filename) = 0;
-
-    /**
-     * @brief Change the work path to the filesystem path that was mounted.
-     */
-    virtual void toCurrentPath() = 0;
 };
 
 } // namespace VFS

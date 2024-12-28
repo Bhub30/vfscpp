@@ -47,8 +47,6 @@ public:
 
     type::FILETYPE type(std::string const & filename) override;
 
-    void toCurrentPath() override;
-
 private:
     bool validFilename(std::string const & filename);
 
