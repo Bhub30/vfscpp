@@ -81,6 +81,9 @@ RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
         return {};
 
     auto totalSize= fs::file_size(_filename);
+    if ( offset > totalSize )
+        return {};
+
     _inStream.seekg(offset, std::ios::beg);
     auto validSize = ( size < totalSize ? size : totalSize );
     Buffer buf(validSize, '.');
