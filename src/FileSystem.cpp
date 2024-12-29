@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <mutex>
 #include "vfs/RegularFile.h"
 #include "vfs/FileSystem.h"
 
@@ -9,11 +10,10 @@ namespace fs = std::filesystem;
 FileSystem::FileSystem(std::string const & path)
     : _path (path)
       , _mounted(false)
+      , _mutex()
 {
-    if (*_path.rbegin() != '/')
-    {
+    if ( *_path.rbegin() != '/' )
         _path.push_back('/');
-    }
 
     mount(_path);
 }
@@ -22,6 +22,7 @@ FileSystem::~FileSystem() { unmount(); }
 
 bool FileSystem::mount(std::string const & path)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( _mounted )
         return false;
 
@@ -40,6 +41,7 @@ bool FileSystem::mount(std::string const & path)
 
 bool FileSystem::unmount()
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted )
         return false;
 
@@ -51,6 +53,7 @@ bool FileSystem::unmount()
 
 IFS::IFilePtr FileSystem::open(std::string const & filename, Perms mode)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted || !fs::exists(filename) || !validFilename(filename) || !hasPermision(mode) )
         return nullptr;
 
@@ -60,6 +63,7 @@ IFS::IFilePtr FileSystem::open(std::string const & filename, Perms mode)
 
 bool FileSystem::remove(std::string const & filename)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted )
         return false;
 
@@ -72,6 +76,7 @@ bool FileSystem::remove(std::string const & filename)
 
 bool FileSystem::touchFile(std::string const & filename)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted || !validFilename(filename) )
         return false;
     auto absolute = _path + filename;
@@ -85,6 +90,7 @@ bool FileSystem::touchFile(std::string const & filename)
 
 bool FileSystem::makeDir(std::string const & filename)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted )
         return false;
 
@@ -97,6 +103,7 @@ bool FileSystem::makeDir(std::string const & filename)
 
 bool FileSystem::moveTo(std::string const & from, std::string const & to)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted || !validFilename(from) || !validFilename(to) )
         return false;
     auto fromAbsolute = _path + from;
@@ -107,11 +114,11 @@ bool FileSystem::moveTo(std::string const & from, std::string const & to)
     fs::rename(fromAbsolute, toAbsolute);
 
     return true;
-
 }
 
 bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string const & to)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted || fsptr == nullptr || !fsptr->isMounted() )
         return false;
 
@@ -126,7 +133,6 @@ bool FileSystem::moveTo(std::string const & from, IFSPtr fsptr, std::string cons
     fs::rename(fromAbsolute, toAbsolute);
 
     return true;
-
 }
 
 IFS::EntryList FileSystem::list()
@@ -139,6 +145,7 @@ IFS::EntryList FileSystem::list()
 
 IFS::EntryList FileSystem::list(std::string const & dir)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted || !validFilename(dir))
         return {};
 
@@ -149,8 +156,8 @@ IFS::EntryList FileSystem::list(std::string const & dir)
     auto iters = fs::recursive_directory_iterator(absolute);
     EntryList result;
     result.reserve(10);
-    for (auto const& dir_entry : iters)
-        result.emplace_back(std::move(dir_entry.path().string()));
+    for ( auto const& dir_entry : iters )
+        result.emplace_back( std::move( dir_entry.path().string() ) );
 
     return result;
 }
@@ -176,6 +183,7 @@ std::string FileSystem::search(std::string const & filename)
 
 bool FileSystem::copy(std::string const & from, std::string const & to)
 {
+    std::lock_guard<std::mutex> lock(_mutex);
     if ( !_mounted )
         return false;
 
@@ -192,7 +200,7 @@ bool FileSystem::copy(std::string const & from, std::string const & to)
 
 type::FILETYPE FileSystem::type(std::string const & filename)
 {
-    if ( !_mounted || !validFilename(filename) )
+    if ( std::lock_guard<std::mutex> lock(_mutex); !_mounted || !validFilename(filename) )
         return type::NOTFOUND;
 
     fs::file_status fs{fs::status(_path + filename)};

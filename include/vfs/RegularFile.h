@@ -1,8 +1,10 @@
 #ifndef REGULARFILE_H
 #define REGULARFILE_H
 
+#include <condition_variable>
 #include <fstream>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include "IFile.h"
 #include "global.h"
@@ -44,7 +46,7 @@ public:
 
     void disableRead() override;
 
-    void disableAll() override { _access = false; };
+    void disableAll() override;
 
 private:
     std::string _filename;  // absolute path
@@ -52,6 +54,9 @@ private:
     std::ifstream _inStream;
     bool _access;
     fs::perms _perms;
+    bool _writing;
+    std::mutex _mutex;
+    std::condition_variable _cv;
 };
 
 }

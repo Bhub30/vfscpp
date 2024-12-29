@@ -2,6 +2,7 @@
 #include <ctime>
 #include <filesystem>
 #include <ios>
+#include <mutex>
 #include "vfs/RegularFile.h"
 #include "vfs/IFS.h"
 #include "vfs/IFile.h"
@@ -16,6 +17,9 @@ RegularFile::RegularFile(std::string const & filename)
       , _inStream(_filename, std::ios::in | std::ios::binary)
       , _access(false)
       , _perms()
+      , _writing(false)
+      , _mutex()
+      , _cv()
 {
     if ( fs::exists(_filename) && ( _outStream.is_open() && _inStream.is_open() ) )
     {
@@ -32,8 +36,12 @@ RegularFile::~RegularFile()
 
 std::size_t RegularFile::write(IFile::Buffer const & buf, std::size_t size)
 {
+    std::unique_lock<std::mutex> lk(_mutex);
     if ( !_access || ( _perms & fs::perms::owner_write ) == fs::perms::none )
         return -1;
+
+    _writing = true;
+    _cv.wait(lk, [this] () { return _writing; });
 
     auto beginPos = _outStream.tellp();
     _outStream.write(buf.data(), size);
@@ -41,18 +49,31 @@ std::size_t RegularFile::write(IFile::Buffer const & buf, std::size_t size)
         return -1;
     auto endPos = _outStream.tellp();
 
-    auto wrote = endPos - beginPos;
-    return wrote;
+    _writing = false;
+    lk.unlock();
+    _cv.notify_one();
+
+    return endPos - beginPos;
 }
 
 std::size_t RegularFile::write(Buffer const & buf, std::size_t offset, std::size_t size)
 {
+    std::unique_lock<std::mutex> lk(_mutex);
     if ( !_access || ( _perms & fs::perms::owner_write ) == fs::perms::none )
         return -1;
 
+    _writing = true;
+    _cv.wait(lk, [this] () { return _writing; });
+
     _outStream.seekp(offset, std::ios::beg);
+    lk.unlock();
     auto wroteSize = write(buf, size);
+    lk.lock();
     _outStream.seekp(0, std::ios::end);
+
+    _writing = false;
+    lk.unlock();
+    _cv.notify_one();
 
     return wroteSize;
 }
@@ -77,6 +98,7 @@ RegularFile::Buffer RegularFile::readAll()
 
 RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
 {
+    std::unique_lock<std::mutex> lk(_mutex);
     if ( !_access || ( _perms & fs::perms::owner_read ) == fs::perms::none )
         return {};
 
@@ -84,10 +106,15 @@ RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
     if ( offset > totalSize )
         return {};
 
-    _inStream.seekg(offset, std::ios::beg);
     auto validSize = ( size < totalSize ? size : totalSize );
+
+    _cv.wait(lk, [this] () { return !_writing; });
+
+    _inStream.seekg(offset, std::ios::beg);
     Buffer buf(validSize, '.');
     _inStream.read(buf.data(), validSize);
+
+    lk.unlock();
 
     if ( _inStream.fail() )
         return {};
@@ -97,6 +124,7 @@ RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
 
 void RegularFile::close()
 {
+    std::lock_guard<std::mutex> lk(_mutex);
     if ( !_access )
         return;
 
@@ -171,5 +199,11 @@ void RegularFile::disableRead()
     _perms = ( _perms & ~fs::perms::owner_read );
     fs::permissions( _filename, _perms );
 }
+
+void RegularFile::disableAll()
+{
+    std::lock_guard<std::mutex> lk(_mutex);
+    _access = false;
+};
 
 }

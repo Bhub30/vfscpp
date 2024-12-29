@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+#include <functional>
+#include <thread>
 #include "vfs/IFile.h"
 #include "vfs/VFS.h"
 
@@ -38,4 +40,20 @@ TEST(RegularFileTest, Permissions) {
     EXPECT_EQ( file.write(buf, buf.size()), -1 );
     EXPECT_TRUE( file.readAll() == VFS::IFile::Buffer{}  );
     file.setPermision(VFS::Perms::RW);
+}
+
+void test(VFS::IFile::Buffer buf, std::size_t offset) {
+    EXPECT_EQ( file.write(buf, buf.size()), buf.size() );
+    EXPECT_EQ( file.write(buf, offset, buf.size()), buf.size() );
+    EXPECT_EQ( file.write(buf, buf.size()), buf.size() );
+}
+
+TEST(RegularFileTest, MultiThread) {
+    VFS::IFile::Buffer b1(10, 'C');
+    VFS::IFile::Buffer b2(20, 'D');
+    std::thread t1(test, std::ref(b1), 0);
+    std::thread t2(test, std::ref(b2), 30);
+
+    t1.join();
+    t2.join();
 }

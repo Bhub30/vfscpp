@@ -21,7 +21,6 @@ namespace type {
     constexpr static char const * const NOTFOUND    = "DOES NOT EXIST";
     constexpr static char const * const NONE        = "NOT-EVALUATED-YET TYPE";
     constexpr static char const * const IMPLDEFINE  = "IMPLEMENTATION-DEFINED TYPE";
-    // 
 } // namespace type
 
 class IFS
@@ -106,9 +105,7 @@ public:
     virtual bool moveTo(std::string const & from, std::string const & to) = 0;
 
     /**
-     * @brief Move the file to the specified mounted filesystem. It is need to know that construct a new FileSystem
-     * object will change work path to that path, so that all function for this object will be not working as before
-     * constructing the new object. By now, it isn't recommend to use this function util fix the bug.
+     * @brief Move the file to the specified mounted filesystem.
      *
      * @param from - relative path to this filesystem
      * @param fs - other already mounted filesystem

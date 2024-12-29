@@ -1,6 +1,7 @@
 #ifndef FILESYSTEM_H
 #define FILESYSTEM_H
 
+#include <mutex>
 #include <string>
 #include "IFS.h"
 #include "IFile.h"
@@ -55,6 +56,7 @@ private:
 private:
     std::string _path;
     bool _mounted;
+    std::mutex _mutex;
 };
 
 }
