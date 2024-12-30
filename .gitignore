@@ -1,3 +1,4 @@
 .vscode/
 build/
+test/data/
 compile_commands.json
