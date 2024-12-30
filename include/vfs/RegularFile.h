@@ -50,13 +50,12 @@ public:
 
 private:
     std::string _filename;  // absolute path
-    std::ofstream _outStream;
-    std::ifstream _inStream;
+    std::fstream _file;
     bool _access;
     fs::perms _perms;
     bool _writing;
     std::mutex _mutex;
-    std::condition_variable _cv;
+    std::condition_variable_any _cv;
 };
 
 }

@@ -1,8 +1,3 @@
-#include <chrono>
-#include <ctime>
-#include <filesystem>
-#include <ios>
-#include <mutex>
 #include "vfs/RegularFile.h"
 #include "vfs/IFS.h"
 #include "vfs/IFile.h"
@@ -13,15 +8,14 @@ namespace fs = std::filesystem;
 
 RegularFile::RegularFile(std::string const & filename)
     : _filename(filename)
-      , _outStream(_filename, std::ios::out | std::ios::binary)
-      , _inStream(_filename, std::ios::in | std::ios::binary)
+      , _file(_filename, std::ios::in | std::ios::out | std::ios::app)
       , _access(false)
       , _perms()
       , _writing(false)
       , _mutex()
       , _cv()
 {
-    if ( fs::exists(_filename) && ( _outStream.is_open() && _inStream.is_open() ) )
+    if ( fs::exists(_filename) && _file.is_open() )
     {
         _access = true;
         _perms = fs::status(_filename).permissions();
@@ -36,18 +30,29 @@ RegularFile::~RegularFile()
 
 std::size_t RegularFile::write(IFile::Buffer const & buf, std::size_t size)
 {
+    return write(buf, 0, size);
+}
+
+std::size_t RegularFile::write(Buffer const & buf, std::size_t offset, std::size_t size)
+{
     std::unique_lock<std::mutex> lk(_mutex);
     if ( !_access || ( _perms & fs::perms::owner_write ) == fs::perms::none )
-        return -1;
+        return 0;
 
     _writing = true;
     _cv.wait(lk, [this] () { return _writing; });
 
-    auto beginPos = _outStream.tellp();
-    _outStream.write(buf.data(), size);
-    if ( _outStream.fail() )
-        return -1;
-    auto endPos = _outStream.tellp();
+    if ( offset > 0 )
+        _file.seekp(offset, std::ios::beg);
+    auto beginPos = _file.tellp();
+    auto getPos = _file.tellg();
+    _file.write(buf.data(), size);
+    if ( _file.fail() )
+        return 0;
+    auto endPos = _file.tellp();
+    _file.seekg(getPos, std::ios::beg);
+    if ( offset > 0 )
+        _file.seekp(0, std::ios::end);
 
     _writing = false;
     lk.unlock();
@@ -56,42 +61,18 @@ std::size_t RegularFile::write(IFile::Buffer const & buf, std::size_t size)
     return endPos - beginPos;
 }
 
-std::size_t RegularFile::write(Buffer const & buf, std::size_t offset, std::size_t size)
-{
-    std::unique_lock<std::mutex> lk(_mutex);
-    if ( !_access || ( _perms & fs::perms::owner_write ) == fs::perms::none )
-        return -1;
-
-    _writing = true;
-    _cv.wait(lk, [this] () { return _writing; });
-
-    _outStream.seekp(offset, std::ios::beg);
-    lk.unlock();
-    auto wroteSize = write(buf, size);
-    lk.lock();
-    _outStream.seekp(0, std::ios::end);
-
-    _writing = false;
-    lk.unlock();
-    _cv.notify_one();
-
-    return wroteSize;
-}
-
 RegularFile::Buffer RegularFile::read(std::size_t size)
 {
-    if ( !_access || ( _perms & fs::perms::owner_read ) == fs::perms::none )
-        return Buffer();
-
     return read(0, size);
 }
 
 RegularFile::Buffer RegularFile::readAll()
 {
-    if ( !_access || ( _perms & fs::perms::owner_read ) == fs::perms::none )
-        return Buffer();
-
-    auto totalSize = size();
+    std::size_t totalSize = 0;
+    {
+        std::lock_guard<std::mutex> lk(_mutex);
+        totalSize = size();
+    }
 
     return read(0, totalSize);
 }
@@ -102,7 +83,7 @@ RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
     if ( !_access || ( _perms & fs::perms::owner_read ) == fs::perms::none )
         return {};
 
-    auto totalSize= fs::file_size(_filename);
+    auto totalSize= this->size();
     if ( offset > totalSize )
         return {};
 
@@ -110,13 +91,14 @@ RegularFile::Buffer RegularFile::read(std::size_t offset, std::size_t size)
 
     _cv.wait(lk, [this] () { return !_writing; });
 
-    _inStream.seekg(offset, std::ios::beg);
+    if ( offset > 0 )
+        _file.seekg(offset, std::ios::beg);
     Buffer buf(validSize, '.');
-    _inStream.read(buf.data(), validSize);
+    _file.read(buf.data(), validSize);
 
     lk.unlock();
 
-    if ( _inStream.fail() )
+    if ( _file.fail() )
         return {};
 
     return buf;
@@ -128,9 +110,8 @@ void RegularFile::close()
     if ( !_access )
         return;
 
-    _outStream.flush();
-    _outStream.close();
-    _inStream.close();
+    _file.flush();
+    _file.close();
 
     _access = false;
 }

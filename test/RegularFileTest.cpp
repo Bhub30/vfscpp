@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
-#include <functional>
+#include <unistd.h>
+#include <iostream>
 #include <thread>
-#include "vfs/IFile.h"
 #include "vfs/VFS.h"
 
-auto filePath = "/home/maple/workspace/code/vfs/test/data/file.txt";
+auto filePath = "/home/maple/workspace/code/vfs/test/data/file2.txt";
 VFS::RegularFile file(filePath);
 
 VFS::IFile::Buffer buf(100, 'A');
@@ -42,18 +42,28 @@ TEST(RegularFileTest, Permissions) {
     file.setPermision(VFS::Perms::RW);
 }
 
-void test(VFS::IFile::Buffer buf, std::size_t offset) {
+void test_write(VFS::IFile::Buffer buf, std::size_t offset) {
     EXPECT_EQ( file.write(buf, buf.size()), buf.size() );
-    EXPECT_EQ( file.write(buf, offset, buf.size()), buf.size() );
     EXPECT_EQ( file.write(buf, buf.size()), buf.size() );
+    EXPECT_EQ( file.write(buf, buf.size()), buf.size() );
+}
+
+void test_read() {
+    auto b = file.read(10);
+    EXPECT_EQ( b.size(), 10 );
+    std::cout << "read: " << b.data() << "\n";
 }
 
 TEST(RegularFileTest, MultiThread) {
     VFS::IFile::Buffer b1(10, 'C');
     VFS::IFile::Buffer b2(20, 'D');
-    std::thread t1(test, std::ref(b1), 0);
-    std::thread t2(test, std::ref(b2), 30);
+    std::thread t1(test_write, std::ref(b1), 0);
+    std::thread t2(test_write, std::ref(b2), 20);
+    std::thread t3(test_read );
+    std::thread t4(test_read );
 
     t1.join();
     t2.join();
+    t3.join();
+    t4.join();
 }
